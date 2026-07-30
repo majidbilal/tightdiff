@@ -1,0 +1,47 @@
+{
+  "name": "tightdiff",
+  "version": "0.1.1",
+  "description": "A linter for AI code slop. Parses your diff and blocks debug leftovers, disabled tests, weakened checks, placeholders, out-of-scope edits, and committed build output. Zero dependencies.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Majid Bilal <majidbilaly@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/majidbilal/tightdiff.git"
+  },
+  "homepage": "https://github.com/majidbilal/tightdiff#readme",
+  "bugs": {
+    "url": "https://github.com/majidbilal/tightdiff/issues"
+  },
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs"
+  },
+  "bin": {
+    "tightdiff": "cli.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "cli.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "diff",
+    "lint",
+    "pre-commit",
+    "code-review",
+    "ai-agents",
+    "code-quality",
+    "git-hook",
+    "slop",
+    "ci",
+    "cli"
+  ],
+  "scripts": {
+    "test": "node --test"
+  }
+}
