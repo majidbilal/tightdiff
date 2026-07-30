@@ -1,0 +1,32 @@
+name: CI
+
+# Runs the package's own tests on every push and pull request, in the package's own directory,
+# exactly as a consumer would run them.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Zero dependencies is a claim worth testing on every platform, not asserting.
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ["18", "20", "22"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - name: Confirm there is nothing to install
+        run: node -e "const p=require('./package.json');if(p.dependencies&&Object.keys(p.dependencies).length){console.error('runtime dependencies found');process.exit(1)}console.log('zero runtime dependencies')"
+      - run: npm test

@@ -1,0 +1,72 @@
+name: Publish
+
+# Trusted Publishing (OIDC) — https://docs.npmjs.com/trusted-publishers
+#
+# No npm token exists anywhere. GitHub mints a short-lived, cryptographically-signed credential
+# scoped to THIS repository and THIS workflow file, which npm verifies. That is why there is no OTP,
+# no passkey, and no secret to leak: the credential is issued to the job, not to a person.
+#
+# Bonus: publishing this way generates npm provenance automatically (public repo + public package),
+# with no --provenance flag needed.
+#
+# ── SETUP (once per package, on npmjs.com) ────────────────────────────────────────────────────
+# The package must already exist on npm, so publish 0.1.0 manually first, then:
+#   npmjs.com -> Packages -> tightdiff -> Settings -> Trusted Publisher -> GitHub Actions
+#     Organization or user:  majidbilal
+#     Repository:            tightdiff
+#     Workflow filename:     publish.yml      (exact, case-sensitive, with .yml)
+#     Allowed actions:       npm publish      (required for configs created after 2026-05-20)
+#
+# npm does NOT validate these fields when you save them — a typo only surfaces as ENEEDAUTH on the
+# first real publish. Also required: package.json "repository.url" must match the repo exactly.
+#
+# Afterwards, for maximum security: Settings -> Publishing access ->
+#   "Require two-factor authentication and disallow tokens". OIDC keeps working; tokens stop.
+#
+# ── RELEASE ──────────────────────────────────────────────────────────────────────────────────
+#   npm version patch          # or minor / major — creates the vX.Y.Z tag
+#   git push --follow-tags     # this workflow publishes it
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # required: this is what lets npm verify the OIDC claim
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest # trusted publishing requires GitHub-hosted runners
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          # Trusted publishing requires Node >= 22.14.0 and npm >= 11.5.1.
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false # npm's guidance: never cache in a release build
+
+      - name: Show toolchain
+        run: node --version && npm --version
+
+      # Deliberately no `npm ci`: this package has zero dependencies and therefore no lockfile,
+      # which is exactly the case where `npm ci` fails. Nothing to install.
+      - name: Confirm there is nothing to install
+        run: node -e "const p=require('./package.json');if(p.dependencies&&Object.keys(p.dependencies).length){console.error('unexpected runtime dependencies');process.exit(1)}console.log('zero runtime dependencies')"
+
+      # The gate: a failing package is never published, whatever the tag says.
+      - name: Test
+        run: npm test
+
+      - name: Verify the tarball is complete
+        run: npm pack --dry-run
+
+      - name: Publish
+        # --provenance should be implied by trusted publishing, but several maintainers report the
+        # first OIDC publish failing without it. Passing it explicitly is harmless and removes a
+        # class of first-release failure.
+        run: npm publish --access public --provenance
