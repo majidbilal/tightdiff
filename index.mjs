@@ -752,8 +752,12 @@ export const WHOLE_FILE_RULES = [
       if (!fileExists || !/\.[cm]?[jt]sx?$/i.test(path)) return [];
       const out = [];
       for (const [i, raw] of lines.entries()) {
-        const line = codeView(raw);
-        const m = /\b(?:from|require\s*\(|import\s*\()\s*['"](\.[^'"]*)['"]/.exec(line);
+        // Decide it is real code using the CODE VIEW, then read the specifier from the RAW line.
+        // Reading the specifier from the code view yields whitespace, because that view blanks string
+        // contents — which silently disabled this rule entirely until an MCP test caught it.
+        const code = codeView(raw);
+        if (!/\b(?:from|require\s*\(|import\s*\()/.test(code)) continue;
+        const m = /\b(?:from|require\s*\(|import\s*\()\s*['"](\.[^'"]*)['"]/.exec(raw);
         if (!m) continue;
         if (!fileExists(path, m[1])) {
           out.push({ line: i + 1, evidence: raw.trim().slice(0, 120), detail: m[1] });

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseDiff, analyze, matchesGlob, formatReport, toJson, RULES, SEVERITY, AXIS, REINVENTED, codeView, parseSuppression } from "./index.mjs";
+import { parseDiff, analyze, matchesGlob, formatReport, toJson, RULES, SEVERITY, AXIS, REINVENTED, codeView, parseSuppression, auditFiles } from "./index.mjs";
 
 /** Build a unified diff for one file from its added lines. */
 function diffFor(path, added = [], removed = []) {
@@ -497,4 +497,35 @@ test("json output carries suppressions for CI auditing", () => {
   ]))));
   assert.equal(parsed.suppressed.length, 1);
   assert.ok(Array.isArray(parsed.staleSuppressions));
+});
+
+test("missing-module actually detects a nonexistent relative import", () => {
+  // Regression: this rule extracted the specifier from the CODE VIEW, which blanks string contents,
+  // so the path was always whitespace and the rule silently never fired. It was disabled for its
+  // entire existence until an MCP-level test noticed the finding was absent. Reading the specifier
+  // from the raw line — while still confirming it is code, not a comment — is the fix.
+  const files = [
+    { path: "src/a.mjs", content: `import { real } from "./real.mjs";\nimport { ghost } from "./ghost.mjs";\n` },
+  ];
+  const exists = (from, spec) => spec === "./real.mjs";
+
+  const res = auditFiles(files, { fileExists: exists });
+  const hits = res.findings.filter((f) => f.rule === "missing-module");
+  assert.equal(hits.length, 1, `expected exactly one missing module, got ${hits.length}`);
+  assert.match(hits[0].why, /ghost\.mjs/);
+  assert.equal(hits[0].line, 2);
+  assert.equal(res.ok, false, "a hallucinated import must block");
+});
+
+test("missing-module ignores an import path mentioned in a comment", () => {
+  const files = [{ path: "src/a.mjs", content: `// we removed: import { x } from "./gone.mjs"\nexport const v = 1;\n` }];
+  const res = auditFiles(files, { fileExists: () => false });
+  assert.equal(res.findings.filter((f) => f.rule === "missing-module").length, 0);
+});
+
+test("missing-module stays silent when no resolver is supplied", () => {
+  // Without a filesystem there is no way to know, and guessing would invent hallucination reports.
+  const files = [{ path: "src/a.mjs", content: `import { x } from "./nowhere.mjs";\n` }];
+  const res = auditFiles(files, {});
+  assert.equal(res.findings.filter((f) => f.rule === "missing-module").length, 0);
 });

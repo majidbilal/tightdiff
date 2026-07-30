@@ -5,29 +5,34 @@
 [![license](https://img.shields.io/npm/l/tightdiff)](./LICENSE)
 [![CI](https://github.com/majidbilal/tightdiff/actions/workflows/ci.yml/badge.svg)](https://github.com/majidbilal/tightdiff/actions/workflows/ci.yml)
 
-**Keep changes tight.** A linter for AI code slop. Zero dependencies, Node ≥18.
+**AI wrote your code. This checks it didn't leave a mess behind.**
 
 ```bash
-npx tightdiff              # no install needed — analyzes your staged changes
-npm i -D tightdiff         # as a dev dependency / pre-commit hook
+npx tightdiff
 ```
 
-**24 rules across three axes** — noise, lies, and taste — that **exit non-zero**. A gate, not a suggestion.
+Run it before you commit. No install, no config.
 
-## The problem
+---
 
-Coding agents rarely fail by writing *wrong* code. They fail by writing **too much**: a drive-by
-reformat, a stray `console.log`, a block commented out "just in case", a `@ts-ignore` to quiet the
-compiler, a `.skip` on the test that broke, a dependency nobody asked for.
+## The problem, in one example
 
-Each is small. Together they are how a codebase rots — and **every one of them passes CI.**
+You ask your AI assistant to fix a bug. It does. It also:
 
-## Why this is not "keep diffs small" advice
+- leaves a `console.log` in there from when it was debugging
+- adds `// @ts-ignore` because the types complained
+- puts `.skip` on the test that was failing
+- writes `throw new Error("not implemented")` in a branch it didn't finish
+- reformats fifty lines you never asked it to touch
 
-Advice is ignored. tightdiff parses the actual diff, names each violation with its file and line, and
-**exits non-zero**. It is a gate.
+Every one of those **passes your tests**. Every one of those ships. Do it fifty times and the
+codebase is a swamp — and you won't know which change did it.
 
-```bash
+## What tightdiff does
+
+It reads your actual changes and **stops the commit** if it finds any of that:
+
+```
 $ npx tightdiff
 app.ts
   warn  commented-code:2  Commented-out code is dead weight the next reader must decode.
@@ -39,90 +44,168 @@ app.ts
   BLOCK placeholder:6  Placeholder content presented as finished work.
         throw new Error('not implemented');
 
-dist/bundle.js
-  BLOCK generated-committed  Build output committed. Generate it, do not track it.
-
 ✗ tightdiff: 4 blocking issue(s) in 8 changed lines.
 
 Fix the blocking items, or escalate the underlying failure — do not silence the check.
-$ echo $?
-1
 ```
 
-## Rules
+It exits with an error code, so it actually **blocks** — it isn't a suggestion you can scroll past.
 
-**Blocking** — patterns that are essentially never justified in finished work:
+## Use it with your AI coding assistant
 
-| Rule | Catches |
-|---|---|
-| `debug-leftover` | `console.log`, `debugger`, `dbg!`, `binding.pry`, `var_dump` in shipped source |
-| `disabled-test` | `.only`, `.skip`, `xit`, `xdescribe`, `@pytest.mark.skip` — a hidden failure |
-| `weakened-check` | `\|\| true`, `continue-on-error`, `--no-verify`, `@ts-ignore`, blanket `eslint-disable`, `push --force` |
-| `placeholder` | lorem ipsum, `TODO: implement`, `NotImplementedError`, `YOUR_KEY_HERE` |
-| `out-of-scope` | a file outside the declared write scope — how parallel agents overwrite each other |
-| `generated-committed` | `dist/`, `build/`, `vendor/`, `.min.js` tracked instead of generated (lockfiles exempt) |
-
-**Warnings** — defensible in some contexts, so they never block: `commented-code`, `any-escape`,
-`empty-catch`, `trailing-whitespace`, `reformat-churn`, `dependency-added`, `duplicate-block`,
-`file-too-large`, `oversized-change`, `too-many-files`.
-
-That split is deliberate. **A gate that cries wolf gets disabled, which is worse than having none.**
-
-## CLI
-
-```bash
-npx tightdiff                          # staged changes (pre-commit)
-npx tightdiff --all                    # working tree vs HEAD
-npx tightdiff --base origin/main       # branch vs a base
-git diff | npx tightdiff               # any diff on stdin
-npx tightdiff --scope "src/client/**"  # declare an allowed write scope
-npx tightdiff --json                   # machine-readable, for CI
-```
-
-Exit codes: **0** clean · **1** blocking issues · **2** usage/environment error.
-
-### As a pre-commit hook
+**Step 1 — make it a gate.** Create `.husky/pre-commit`, or `.git/hooks/pre-commit`, containing:
 
 ```sh
 #!/bin/sh
 npx tightdiff || exit 1
 ```
 
-### Project config — `tightdiff.json`
+Now no commit lands with slop in it, whoever or whatever wrote it.
+
+**Step 2 — tell your assistant about it.** Paste this into `CLAUDE.md`, `AGENTS.md`, or
+`.cursor/rules/tightdiff.mdc`:
+
+```markdown
+## Before you finish a change
+
+Run `npx tightdiff` and fix anything it blocks. It catches leftovers that pass tests but
+should never ship: debug logging, skipped tests, @ts-ignore, placeholder code, committed
+build output, and hardcoded secrets.
+
+If it blocks something you believe is correct, do NOT silence the rule. Either fix the
+underlying problem, or add a suppression WITH a stated reason on that line:
+
+    console.log(banner); // tightdiff-allow debug-leftover — this is the CLI's real output
+
+Suppressions appear in every report, so they stay visible.
+```
+
+Works with **Claude Code, Cursor, Codex, Copilot CLI, Aider** — anything that reads a project
+instruction file and can run a command.
+
+**Step 3 — put it in CI** so it can't be skipped locally:
+
+```yaml
+- run: npx tightdiff --base origin/main
+```
+
+### Or connect it as an MCP server
+
+If your tool supports MCP (Claude Code, Claude Desktop, Cursor, Codex), the assistant can check its
+own work directly — no shell needed:
 
 ```json
 {
-  "limits": { "maxChangedLines": 400, "maxFilesTouched": 25 },
+  "mcpServers": {
+    "tightdiff": { "command": "npx", "args": ["-y", "-p", "tightdiff", "tightdiff-mcp"] }
+  }
+}
+```
+
+Four tools: `check_diff` (check a `git diff`), `check_files` (check files you just wrote, before any
+diff exists), `audit_repo` (scan a whole project), and `list_rules` (so it knows the bar before it
+starts). Every reply leads with a one-line **verdict**, so the assistant can act without parsing prose.
+
+**Completely stateless** — nothing is held between calls, so it's safe to restart at any time.
+
+## Already have a messy codebase?
+
+Don't worry — you won't get 500 errors on day one. Record what's already there, and only *new*
+problems will fail:
+
+```bash
+npx tightdiff --audit --write-baseline   # once: "this is the existing mess, ignore it"
+npx tightdiff --audit                    # from now on, only new mess fails
+```
+
+It also tells you when baselined problems have been **fixed**, so you can tighten it over time
+instead of carrying the baseline forever.
+
+## What it catches
+
+**Blocks the commit** — things that are basically never right:
+
+| | |
+|---|---|
+| `debug-leftover` | `console.log`, `debugger`, `dbg!` left in shipped code |
+| `disabled-test` | `.skip`, `.only`, `xit` — a hidden failing test |
+| `weakened-check` | `\|\| true`, `continue-on-error`, `--no-verify`, `@ts-ignore` |
+| `placeholder` | `TODO: implement`, `NotImplementedError`, lorem ipsum, `YOUR_KEY_HERE` |
+| `hardcoded-secret` | an API key, token, or password in the source |
+| `generated-committed` | `dist/`, `build/`, `.min.js` committed instead of built |
+| `out-of-scope` | a file outside the area you said you'd touch |
+| `missing-module` | an import of a file that doesn't exist |
+
+**Warns only** — sometimes fine, so it never blocks: `commented-code`, `redundant-comment`,
+`hedging-comment` ("this should work"), `pointless-catch`, `async-no-await`,
+`reinvented-platform` (hand-writing something JavaScript already has), `any-escape`, `empty-catch`,
+`trailing-whitespace`, `reformat-churn`, `dependency-added`, `duplicate-block`, `oversized-change`.
+
+That split is deliberate: **a tool that cries wolf gets switched off**, which is worse than not
+having it. Only things that are almost never justified will stop you.
+
+### Three kinds of mess
+
+Rules are grouped by what's actually wrong, and reported per group:
+
+- **noise** — adds nothing (debug logs, dead code, comments restating the code)
+- **lies** — looks finished but isn't (placeholders, silenced checks, swallowed errors)
+- **taste** — works, but shouldn't exist in that shape (reinvented built-ins, copy-paste)
+
+Most tools only catch *noise*. Confidently-wrong code is the expensive kind.
+
+## All the options
+
+```bash
+npx tightdiff --help
+```
+
+| Option | What it does |
+|---|---|
+| *(nothing)* | check your staged changes — use this in a pre-commit hook |
+| `--all` | check everything you've changed, staged or not |
+| `--base origin/main` | check the whole branch — use this in CI |
+| `--audit` | scan the entire project, not just recent changes |
+| `--baseline <file>` | only fail on problems not already recorded |
+| `--write-baseline` | record current problems as accepted |
+| `--scope "src/**"` | fail if files outside this area were touched |
+| `--allow <rule>` | downgrade a rule to a warning (shown in the report) |
+| `--json` | machine-readable, for CI dashboards |
+
+Project defaults go in `tightdiff.json`:
+
+```json
+{
+  "limits": { "maxChangedLines": 400 },
   "writeScope": ["src/**", "tests/**"],
   "allow": ["trailing-whitespace"]
 }
 ```
 
-Allowlisting downgrades a rule to a warning and **records that it was allowlisted in the report**, so
-the escape hatch stays visible rather than silently weakening the gate.
-
-## Library
+## Using it in code
 
 ```js
-import { analyze, parseDiff, formatReport, toJson } from "tightdiff";
+import { analyze, formatReport } from "tightdiff";
 
-const result = analyze(diffText, { writeScope: ["src/**"], limits: { maxChangedLines: 200 } });
-result.ok;        // false
+const result = analyze(diffText, { writeScope: ["src/**"] });
+result.ok;        // false if anything blocks
 result.blocking;  // [{ rule, file, line, why, evidence }]
-result.stats;     // { files, added, removed, changed, ruleCounts }
-console.log(formatReport(result, { color: true }));
+console.log(formatReport(result));
 ```
 
-## Design rules
+## What it won't do
 
-- **Pure core.** `analyze()` and `parseDiff()` touch no filesystem and shell out to nothing; only the
-  CLI calls `git`.
-- **Tolerant parser.** Renames, binaries, new/deleted files, and `\ No newline` are handled. A parser
-  that crashes on an unusual diff is a gate that silently stopped protecting you.
-- **Added lines only.** Removing slop is always welcome.
-- **Every finding explains *why it matters*,** not just what it found.
-- **Zero dependencies.**
+- It **doesn't judge whether your code is correct** — that's what tests are for. It catches the
+  mess around the code.
+- It **doesn't rewrite anything.** It tells you what's wrong and where; you decide.
+- It reads text, not meaning. It can't tell that a function is badly named or an abstraction is
+  wrong.
+
+## Why you can trust it in a build
+
+No dependencies at all — nothing to install, nothing that can break. Runs anywhere Node 18+ runs.
+Tested on Linux, macOS and Windows across Node 18, 20 and 22.
 
 ## License
 
-MIT
+MIT © Majid Bilal
