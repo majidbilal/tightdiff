@@ -200,6 +200,14 @@ console.log(formatReport(result));
 - It **doesn't rewrite anything.** It tells you what's wrong and where; you decide.
 - It reads text, not meaning. It can't tell that a function is badly named or an abstraction is
   wrong.
+- It **isn't a formatter.** Use Prettier or ESLint for style; tightdiff only flags formatting when
+  it's *churn* — lines reformatted that weren't part of your change.
+
+**See [ROADMAP.md](./ROADMAP.md)** for what's coming next, and what deliberately isn't.
+
+Found a false positive? That's a **bug** — please report it. A tool that cries wolf gets switched
+off, which is worse than not having one.
+
 
 ## Why you can trust it in a build
 

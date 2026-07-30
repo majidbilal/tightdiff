@@ -1,6 +1,6 @@
 {
   "name": "tightdiff",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A linter for AI code slop. Parses your diff and blocks debug leftovers, disabled tests, weakened checks, placeholders, out-of-scope edits, and committed build output. Zero dependencies.",
   "type": "module",
   "license": "MIT",
@@ -26,7 +26,8 @@
     "mcp.mjs",
     "cli.mjs",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "ROADMAP.md"
   ],
   "engines": {
     "node": ">=18"
