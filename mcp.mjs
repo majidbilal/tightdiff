@@ -306,4 +306,9 @@ function send(obj) {
   process.stdout.write(`${JSON.stringify(obj)}\n`);
 }
 
-process.stdin.on("end", () => process.exit(0));
+// stdin closing means the host has detached. Deliberately NO `process.exit()` here: it does not wait
+// for stdout to drain, so a large response gets truncated mid-message and the client receives
+// unparseable JSON. With stdin ended and no work pending, Node exits on its own once stdout has flushed.
+process.stdin.on("end", () => {
+  process.exitCode = 0;
+});
